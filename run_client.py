@@ -93,7 +93,7 @@ class PageloadExperiment:
           page_list.append(urls)
     return page_list
 
-  def DownloadOnePage(self, urls, request_num):
+  def DownloadOnePage(self, urls, concurrent, request_num):
     """Download a page emulated by a list of urls.
 
     Args:
@@ -112,18 +112,16 @@ class PageloadExperiment:
     num = None  # set to the number of workers you want (it defaults to the cpu count of your machine)
     tp = ThreadPool(num)
     start_time = Timestamp()
-    for sample in range(1, 1000):
+    for sample in range(1, request_num):
         tp.apply_async(work, (cmd_in_list,))
 
     tp.close()
     tp.join()
     end_time = Timestamp()
+    delta_time = (end_time - start_time) / request_num 
+    return delta_time 
 
-    delta_time = (end_time - start_time) 
-    max_packets = 0
-    return delta_time, max_packets
-
-  def RunExperiment(self, infile, delay_file, request_num, packets_file=None, num_it=1):
+  def RunExperiment(self, infile, delay_file, concurrent, request_num, packets_file=None, num_it=1):
     """Run the pageload experiment.
 
     Args:
@@ -143,10 +141,9 @@ class PageloadExperiment:
       plt_one_row = [str(i)]
       packets_one_row = [str(i)]
       for urls in page_list:
-        time_micros, num_packets = self.DownloadOnePage(urls, request_num)
+        time_micros = self.DownloadOnePage(urls, concurrent, request_num)
         time_secs = time_micros / 1000000.0
         plt_one_row.append('%6.3f' % time_secs)
-        packets_one_row.append('%5d' % num_packets)
       plt_list.append(plt_one_row)
       packets_list.append(packets_one_row)
 
@@ -155,12 +152,6 @@ class PageloadExperiment:
       csv_writer.writerow(header)
       for one_row in plt_list:
         csv_writer.writerow(one_row)
-    if packets_file:
-      with open(packets_file, 'w') as f:
-        csv_writer = csv.writer(f, delimiter=',')
-        csv_writer.writerow(header)
-        for one_row in packets_list:
-          csv_writer.writerow(one_row)
 
 
 def main():
@@ -178,6 +169,7 @@ def main():
                     default='127.0.0.1')
   parser.add_option('--port', dest='quic_server_port',
                     default='5002')
+  parser.add_option('--concurrent', dest='concurrent', default=4)
   parser.add_option('--delay_file', dest='delay_file', default='delay.csv')
   parser.add_option('--packets_file', dest='packets_file',
                     default='packets.csv')
@@ -188,7 +180,8 @@ def main():
   exp = PageloadExperiment(options.use_wget, options.quic_binary_dir,
                            options.quic_server_address,
                            options.quic_server_port)
-  exp.RunExperiment(options.infile, options.delay_file, options.requestnum, options.packets_file)
+  exp.RunExperiment(options.infile, options.delay_file, options.concurrent,
+                    options.requestnum, options.packets_file)
 
 if __name__ == '__main__':
   sys.exit(main())
