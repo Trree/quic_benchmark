@@ -12,6 +12,7 @@ import shlex
 import subprocess
 import sys
 from optparse import OptionParser
+from multiprocessing.pool import ThreadPool
 
 """Start a client to fetch web pages either using wget or using quic_client.
 If --use_wget is set, it uses wget.
@@ -39,6 +40,13 @@ def Timestamp(datetm=None):
   diff = datetm - datetime.datetime.utcfromtimestamp(0)
   timestamp = (diff.days * 86400 + diff.seconds) * 1000000 + diff.microseconds
   return timestamp
+
+
+def work(cmd_in_list):
+    ps_proc = subprocess.Popen(cmd_in_list,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE)
+
 
 class PageloadExperiment:
   def __init__(self, use_wget, quic_binary_dir, quic_server_address,
@@ -85,7 +93,7 @@ class PageloadExperiment:
           page_list.append(urls)
     return page_list
 
-  def DownloadOnePage(self, urls):
+  def DownloadOnePage(self, urls, request_num):
     """Download a page emulated by a list of urls.
 
     Args:
@@ -100,23 +108,22 @@ class PageloadExperiment:
           self.quic_binary_dir, self.quic_server_port, self.quic_server_address)
     cmd_in_list = shlex.split(cmd)
     cmd_in_list.extend(urls)
+
+    num = None  # set to the number of workers you want (it defaults to the cpu count of your machine)
+    tp = ThreadPool(num)
     start_time = Timestamp()
-    ps_proc = subprocess.Popen(cmd_in_list,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE)
-    _std_out, std_err = ps_proc.communicate()
+    for sample in range(1, 1000):
+        tp.apply_async(work, (cmd_in_list,))
+
+    tp.close()
+    tp.join()
     end_time = Timestamp()
-    delta_time = end_time - start_time
+
+    delta_time = (end_time - start_time) 
     max_packets = 0
-    if not self.use_wget:
-      for line in std_err.splitlines():
-        if line.find('Client: Got packet') >= 0:
-          elems = line.split()
-          packet_num = int(elems[4])
-          max_packets = max(max_packets, packet_num)
     return delta_time, max_packets
 
-  def RunExperiment(self, infile, delay_file, packets_file=None, num_it=1):
+  def RunExperiment(self, infile, delay_file, request_num, packets_file=None, num_it=1):
     """Run the pageload experiment.
 
     Args:
@@ -136,7 +143,7 @@ class PageloadExperiment:
       plt_one_row = [str(i)]
       packets_one_row = [str(i)]
       for urls in page_list:
-        time_micros, num_packets = self.DownloadOnePage(urls)
+        time_micros, num_packets = self.DownloadOnePage(urls, request_num)
         time_secs = time_micros / 1000000.0
         plt_one_row.append('%6.3f' % time_secs)
         packets_one_row.append('%5d' % num_packets)
@@ -175,12 +182,13 @@ def main():
   parser.add_option('--packets_file', dest='packets_file',
                     default='packets.csv')
   parser.add_option('--infile', dest='infile', default='test_urls.json')
+  parser.add_option('--requestnum', dest='requestnum', default=100)
   (options, _) = parser.parse_args()
 
   exp = PageloadExperiment(options.use_wget, options.quic_binary_dir,
                            options.quic_server_address,
                            options.quic_server_port)
-  exp.RunExperiment(options.infile, options.delay_file, options.packets_file)
+  exp.RunExperiment(options.infile, options.delay_file, options.requestnum, options.packets_file)
 
 if __name__ == '__main__':
   sys.exit(main())
