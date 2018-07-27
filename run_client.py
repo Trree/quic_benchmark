@@ -17,15 +17,15 @@ from multiprocessing.pool import ThreadPool
 """Start a client to fetch web pages either using wget or using quic_client.
 If --use_wget is set, it uses wget.
 Usage: This invocation
-  run_client.py --quic_binary_dir=../../../../out/Debug \
+  run_client.py --quic_binary=../../../../out/Default/quic_client \
       --address=127.0.0.1 --port=5000 --infile=test_urls.json \
-      --delay_file=delay.csv --packets_file=packets.csv
+      --delay_file=delay.csv 
   fetches pages listed in test_urls.json from a quic server running at
   127.0.0.1 on port 5000 using quic binary ../../../../out/Debug/quic_client
   and stores the delay in delay.csv and the max received packet number (for
   QUIC) in packets.csv.
   If --use_wget is present, it will fetch the URLs using wget and ignores
-  the flags --address, --port, --quic_binary_dir, etc.
+  the flags --address, --port, --quic_binary, etc.
 """
 
 def Timestamp(datetm=None):
@@ -49,23 +49,23 @@ def work(cmd_in_list):
 
 
 class PageloadExperiment:
-  def __init__(self, use_wget, quic_binary_dir, quic_server_address,
+  def __init__(self, use_wget, quic_binary, quic_server_address,
                quic_server_port):
     """Initialize PageloadExperiment.
 
     Args:
       use_wget: Whether to use wget.
-      quic_binary_dir: Directory for quic_binary.
+      quic_binary: Execute for quic_binary.
       quic_server_address: IP address of quic server.
       quic_server_port: Port of the quic server.
     """
     self.use_wget = use_wget
-    self.quic_binary_dir = quic_binary_dir
+    self.quic_binary = quic_binary
     self.quic_server_address = quic_server_address
     self.quic_server_port = quic_server_port
-    if not use_wget and not os.path.isfile(quic_binary_dir + '/quic_client'):
+    if not use_wget and not os.path.isfile(quic_binary):
       raise IOError('There is no quic_client in the given dir: %s.'
-                    % quic_binary_dir)
+                    % quic_binary)
 
   @classmethod
   def ReadPages(cls, json_file):
@@ -104,8 +104,8 @@ class PageloadExperiment:
     if self.use_wget:
       cmd = 'wget -O -'
     else:
-      cmd = '%s/quic_client --port=%s --address=%s' % (
-          self.quic_binary_dir, self.quic_server_port, self.quic_server_address)
+      cmd = '%s --port=%s --address=%s --quiet' % (
+          self.quic_binary, self.quic_server_port, self.quic_server_address)
     cmd_in_list = shlex.split(cmd)
     cmd_in_list.extend(urls)
 
@@ -143,7 +143,7 @@ class PageloadExperiment:
       for urls in page_list:
         time_micros = self.DownloadOnePage(urls, concurrent, request_num)
         time_secs = time_micros / 1000000.0
-        plt_one_row.append('%6.3f' % time_secs)
+        plt_one_row.append('%6.6f' % time_secs)
       plt_list.append(plt_one_row)
       packets_list.append(packets_one_row)
 
@@ -160,7 +160,7 @@ def main():
                     default=False)
   # Note that only debug version generates the log containing packets
   # information.
-  parser.add_option('--quic_binary_dir', dest='quic_binary_dir',
+  parser.add_option('--quic_binary', dest='quic_binary',
                     default='../../../../out/Debug')
   # For whatever server address you specify, you need to run the
   # quic_server on that machine and populate it with the cache containing
@@ -177,7 +177,7 @@ def main():
   parser.add_option('--requestnum', dest='requestnum', default=100)
   (options, _) = parser.parse_args()
 
-  exp = PageloadExperiment(options.use_wget, options.quic_binary_dir,
+  exp = PageloadExperiment(options.use_wget, options.quic_binary,
                            options.quic_server_address,
                            options.quic_server_port)
   exp.RunExperiment(options.infile, options.delay_file, options.concurrent,
